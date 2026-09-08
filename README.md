@@ -1,85 +1,99 @@
 # Quantum Randomness → Music
 
-**Can a quantum measurement become a melody?**  
-This project implements a complete pipeline that transforms measurement outcomes from a quantum circuit into a musical composition. The source of randomness is a set of qubits in superposition, measured to produce classical bits that are then mapped to notes, durations, and dynamics.
+**A Schrödinger's Gambit experiment.**
 
-## Overview
+## 1. Overview
 
-- **Quantum Circuit**: `NUM_QUBITS` qubits each prepared with a Hadamard gate and measured.
-- **Bitstream**: Each measurement yields a bitstring; repeated shots generate a list of bitstrings.
-- **Musical Mapping**: Each bitstring is parsed into:
-  - **Rest** (1 bit)
-  - **Scale degree** (3 bits → 0–6)
-  - **Octave** (2 bits → 0–3)
-  - **Duration** (2 bits → one of four lengths)
-  - **Velocity** (3 bits → 0–7 scaled to MIDI velocity)
-- **Output**: A melody rendered as MIDI and optionally as audio (WAV) via FluidSynth.
+This experiment builds a quantum circuit, measures it on a quantum simulator, and uses the resulting measurement outcomes as the stochastic input to a deterministic musical composition algorithm. The output is a MIDI file (and, when possible, rendered audio) that you can inspect, play, and reason about, note by note, all the way back to the quantum bits that produced it.
 
-All randomness originates from the quantum circuit (simulated), not from Python's `random` module (except in the optional comparison section).
+This is **not** a random-music generator that merely mentions quantum computing. The bitstream driving the primary melody is produced by an actual quantum circuit executed on `qiskit-aer`'s `AerSimulator`. Everything downstream — the note mapping, the MIDI encoding, the audio rendering — is a documented, deterministic classical algorithm.
 
-## Motivation
+## 2. Motivation
 
-This experiment is part of the **Schrödinger's Gambit** project, which explores creative applications of quantum computing. By sonifying quantum measurement outcomes, we make abstract quantum behaviour perceptible and show that quantum processes can be a source of stochastic variation for art.
+Quantum measurement produces genuinely discrete, non-deterministic-in-principle outcomes (in the idealized, noise-free case they arise from fundamental quantum probability, not from a classical pseudorandom algorithm). This project asks a simple question: can those outcomes be used as a meaningful, inspectable stochastic input to a creative process, in a way that is scientifically honest about what is and is not quantum?
 
-## Scientific Concept
+## 3. Scientific Concept
 
-- **Superposition**: A qubit in |+⟩ = (|0⟩+|1⟩)/√2 gives 0 or 1 with equal probability upon measurement.
-- **Hadamard Gate**: Creates the equal superposition.
-- **Measurement**: Collapses the state to a classical bit.
-- **Simulated vs Hardware**: The notebook uses a simulator (Qiskit Aer) by default; running on real hardware is optional.
+A qubit starting in |0⟩, after a Hadamard gate, is in the superposition:
 
-## Installation
+H|0⟩ = (|0⟩ + |1⟩) / √2
 
-### Google Colab
+Measuring this qubit yields 0 or 1 with probability 0.5 each, in the ideal case. Repeating this over many qubits and many circuit executions produces a stream of classical bits. Once measured, these bits are ordinary classical data — nothing about them remains quantum after collapse. This notebook is explicit about that boundary throughout.
 
-1. Open [Google Colab](https://colab.research.google.com/).
-2. Upload the notebook `quantum_randomness_music.ipynb` or open it from GitHub.
-3. Run the installation cell (Cell 5) – it installs all required packages.
-4. Execute the cells sequentially.
+## 4. Quantum Circuit
 
-### Local (if desired)
+The circuit is deliberately minimal:
 
-- Install Python 3.8+ and the packages listed in Cell 5.
-- Install FluidSynth (`sudo apt install fluidsynth`) for audio conversion.
-- Run the notebook in Jupyter.
+|0> ── H ── Measure
+|0> ── H ── Measure
+...
 
-## How to Run
 
-1. Configure parameters in **Cell 7** (quantum bits, tempo, scale, etc.).
-2. Run all cells from top to bottom.
-3. The primary melody is saved as `outputs/quantum_melody_01.mid` and `outputs/quantum_melody_01.wav`.
-4. Additional melodies are saved as `quantum_melody_02.mid`, etc.
-5. A classical comparison melody is saved as `classical_melody.mid`.
+`NUM_QUBITS` qubits are each placed into superposition and measured in a single circuit execution (one "shot"). The circuit contains no entangling gates; each qubit is measured independently by design, which keeps the source of randomness easy to reason about.
 
-## Output Files
+## 5. Measurement Process
 
-All generated files are placed in the `outputs/` directory:
+The circuit is executed on `AerSimulator` with `memory=True`, which returns the individual outcome of every shot (not just aggregated counts). Each shot yields one `NUM_QUBITS`-bit string. Multiple shots are concatenated to build a bitstream of any required length. This is the only stage in the whole pipeline that is quantum.
 
-- `quantum_melody_01.mid` – primary MIDI
-- `quantum_melody_01.wav` – audio (if rendering succeeded)
-- `quantum_melody_02.mid`, ... – additional melodies
-- `classical_melody.mid` – comparison melody
+## 6. Bitstream Generation
 
-## Simulator vs Real Hardware
+`generate_quantum_bits(num_bits, num_qubits)`:
 
-- **Simulator**: Uses Qiskit Aer to perform exact calculations of the ideal circuit. Fast, reproducible (with a seed), and free.
-- **Real Hardware**: To use an IBM Quantum device, replace the backend with `IBMQ.get_backend('ibmq_...)` after authenticating. Measurement outcomes will include noise, which can add an extra layer of variation.
+1. Computes how many shots are needed to cover `num_bits`.
+2. Builds and transpiles the Hadamard circuit.
+3. Executes it with `memory=True`.
+4. Concatenates the per-shot bitstrings and trims to exactly `num_bits`.
+5. Returns the bitstream plus metadata (shots executed, backend used, etc.) for transparency.
 
-## Limitations
+If quantum bit generation fails for any reason, the notebook raises a clear error. It never silently substitutes classical randomness.
 
-- The quantum randomness is simulated; no physical quantum device is required.
-- The number of notes is limited by `SHOTS` (default 32).
-- The mapping from bits to music is arbitrary and can be changed.
-- No quantum advantage or superior musical quality is claimed.
-- The audio rendering depends on FluidSynth (works in Colab after installation).
+## 7. Musical Mapping
 
-## Future Extensions
+Every note consumes exactly 12 quantum-measured bits, split as follows:
 
-- Entanglement to correlate voices.
-- Quantum walks for melodic contours.
-- Real‑time hardware integration.
-- Use of quantum optimisation algorithms to shape musical structure.
+| Bits | Count | Range | Parameter |
+|---|---|---|---|
+| 0–2   | 3 | 0–7 | Scale degree (wraps automatically into extra octaves) |
+| 3–4   | 2 | 0–3 | Octave offset |
+| 5–6   | 2 | 0–3 | Duration (index into a fixed duration list) |
+| 7–9   | 3 | 0–7 | Velocity (scaled into a configured range) |
+| 10–11 | 2 | 0–3 | Rest flag |
 
-## Project Context
+This mapping lives in one place — the `BIT_ALLOCATION` dictionary and the `quantum_bits_to_music_parameters` function — so the code and this table cannot drift apart. The scale-degree wrap rule (`degree % len(scale)`, with `degree // len(scale)` extra octaves) works for scales of any length, from pentatonic (5 notes) to chromatic (12 notes).
 
-This notebook is part of [Schrödinger's Gambit](https://schrodingersgambit.com) an open‑source collection of quantum‑inspired creative experiments. It demonstrates a principled way to use quantum measurement outcomes as a stochastic seed for art, while maintaining scientific integrity and educational clarity.
+## 8. Musical Constraints
+
+To keep the output musically coherent rather than arbitrary:
+
+- A single configurable scale and root note are used for the whole melody (default: C major).
+- Octave range is limited and configurable (`OCTAVE_BASE`, `OCTAVE_SPAN`).
+- Durations are drawn from a small, fixed, musically sensible set (`NOTE_DURATION_OPTIONS`).
+- Velocity is bounded to a configured, non-extreme range.
+- Rests occur at a controlled, approximate rate (`REST_THRESHOLD_VALUE`), not on every note.
+
+## 9. Installation
+
+Run this in the first code cell of the notebook (also embedded there):
+
+```bash
+pip install -q "qiskit>=1.0.0" "qiskit-aer>=0.13.0" pylatexenc midiutil
+apt-get -qq update
+apt-get -qq install -y fluidsynth fluid-soundfont-gm
+
+```
+
+## Possible Extensions
+
+- Quantum-derived harmony: use additional qubits to select chords rather than single notes.
+- Multiple quantum registers driving multiple simultaneous instruments or voices.
+- Entangled qubits producing deliberately correlated melodic voices.
+- Parameterized quantum gates used as controllable musical transformation knobs.
+- Quantum walks used to drive melodic contour or movement over time.
+- QAOA-style optimization applied to rhythmic pattern selection.
+- VQE-style optimization applied to musical parameter tuning.
+- Real QPU execution for a live, hardware-driven composition session.
+- Deliberately using hardware noise as a controlled source of musical texture.
+- Quantum-randomness-driven generative ambient or background music.
+- Synchronized quantum-driven audio and visual generation.
+
+These are not implemented in this notebook; they are documented here as natural next steps for the [Schrödinger's Gambit](www.schrodingersgambit.com) project.

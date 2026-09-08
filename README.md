@@ -96,4 +96,4 @@ apt-get -qq install -y fluidsynth fluid-soundfont-gm
 - Quantum-randomness-driven generative ambient or background music.
 - Synchronized quantum-driven audio and visual generation.
 
-These are not implemented in this notebook; they are documented here as natural next steps for the [Schrödinger's Gambit](www.schrodingersgambit.com) project.
+These are not implemented in this notebook; they are documented here as natural next steps for the [Schrödinger's Gambit](https://schrodingersgambit.com) project.
